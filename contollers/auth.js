@@ -35,39 +35,46 @@ exports.signUp = (req, res, next) => {
         });
 }
 
-exports.login = (req, res, next) => {
+exports.login = async (req, res, next) => {
     const email = req.body.email;
     const password = req.body.password;
 
-    let loggedUser;
-    User.findOne({ email: email })
-        .then((user) => {
-            if (!user) {
-                const error = new Error('A user with this email could not be found.');
-                error.statusCode = 401;
-                throw error;
-            }
-            loggedUser = user;
-            return bcrypt.compare(password, user.password);
-        })
-        .then(result => {
-            if (!result) {
-                const error = new Error('Wrong password.');
-                error.statusCode = 401;
-                throw error;
-            }
-            const token = jwt.sign({ email: loggedUser.email, userId: loggedUser._id.toString() },
-                'SomeSuperSecreteSecret', { expiresIn: '12h' }
-            );
-            res.status(200).json({
-                status: 200,
-                message: 'Success',
-                data: { token: token, user: loggedUser }
-            });
-        }).catch((err) => {
-            if (!err.statusCode) {
-                err.statusCode = 500;
-            }
-            next(err);
+    try {
+        const user = await User.findOne({ email: email });
+        if (!user) {
+            const error = new Error('A user with this email could not be found.');
+            error.statusCode = 401;
+            throw error;
+        }
+
+        const result = await bcrypt.compare(password, user.password);
+
+        if (!result) {
+            const error = new Error('Wrong password.');
+            error.statusCode = 401;
+            throw error;
+        }
+
+        const modifiedUser = removePasswordField(user);
+        // console.log(modifiedUser);
+        const token = jwt.sign({ email: user.email, userId: user._id.toString() },
+            'SomeSuperSecreteSecret', { expiresIn: '12h' }
+        );
+
+        res.status(200).json({
+            status: 200,
+            message: 'Success',
+            data: { token: token, user: modifiedUser }
         });
+    } catch (err) {
+        if (!err.statusCode) {
+            err.statusCode = 500;
+        }
+        next(err);
+    }
+}
+
+const removePasswordField = (user) => {
+    user.password = undefined;
+    return user;
 }
